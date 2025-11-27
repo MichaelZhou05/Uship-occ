@@ -1,127 +1,119 @@
-Ushipp Operations Command Center (OCC) - Technical Architecture (Hybrid Cloud)
+# README
 
-1. High-Level Stack and Deployment Summary
+# Ushipp Operations Command Center (OCC)
 
-This project utilizes a Hybrid Architecture, leveraging Vercel for best-in-class frontend performance and AWS for robust backend computation and persistence.
+> A distributed, cloud-native logistics engine for optimizing long-haul university moving operations.
+> 
 
-Component
+## 📋 Project Overview
 
-Technology
+**Ushipp OCC** is a headless operations platform built for University Shipping (Ushipp). It serves as the "Nerve Center" for the business, sitting downstream from the marketing website (Wix) to handle the execution phase of logistics.
 
-Hosting Platform
+The system replaces manual spreadsheet routing with an algorithmic approach, handling order ingestion, vehicle routing optimization (VRP), driver dispatch, and real-time "Last Mile" customer visibility.
 
-Why this choice?
+### Key Capabilities
 
-Frontend/Admin
+- **Headless Ingestion:** Automated webhook bridge that sanitizes and geocodes orders from the legacy Wix platform.
+- **Algorithmic Routing:** Uses **Google OR-Tools** to solve the Vehicle Routing Problem (VRP) with capacity and time-window constraints for multi-state "North/South" runs.
+- **Real-Time Visibility:** High-fidelity "Pizza Tracker" experience for customers, powered by **Redis Pub/Sub** and WebSocket streams.
+- **Hybrid Mobile App:** A **Capacitor**based driver application that handles background GPS tracking, offline-first manifest management, and "Proof of Delivery" photo uploads.
 
-Next.js + React
+## 🏗 Technical Architecture
 
-Vercel
+This project utilizes a **Hybrid Cloud Architecture** to maximize developer velocity and infrastructure robustness.
 
-Optimized CI/CD for Next.js, Edge caching, and zero-config SSR.
+| **Component** | **Technology** | **Hosting** | **Role** |
+| --- | --- | --- | --- |
+| **Frontend** | Next.js + Tailwind | **Vercel** | Admin Dashboard & Customer Tracker. |
+| **Backend** | Python FastAPI | **AWS ECS (Fargate)** | Core Logic, Webhooks, & Routing Algorithm. |
+| **Database** | PostgreSQL + PostGIS | **AWS RDS** | Geospatial Data & Persistence. |
+| **Caching** | Redis | **AWS ElastiCache** | Live GPS State & Session Management. |
+| **Mobile** | React + Capacitor | **App Store** | Driver Companion App (iOS/Android). |
 
-Mobile App
+### Monorepo Structure
 
-React + Capacitor
+We use a unified repository to manage the distributed services.
 
-App Store
+```
+/ushipp-occ
+├── /apps
+│   ├── /web           # Next.js (Admin Console & Customer Tracker)
+│   ├── /api           # Python FastAPI (Backend Logic)
+│   └── /driver        # Next.js + Capacitor (Mobile Wrapper)
+├── /packages
+│   ├── /db-types      # Shared Types (TypeScript Interfaces)
+│   └── /config        # Shared Constants
+└── .github            # CI/CD Pipelines (AWS CodePipeline / Vercel)
 
-Native wrapper around the Vercel web build.
+```
 
-Backend/API
+## 🚀 Getting Started (Local Development)
 
-Python FastAPI
+Follow these steps to get the entire distributed system running on your local machine.
 
-AWS ECS (Fargate)
+### Prerequisites
 
-Supports long-running processes (Routing Algo) and scalable containerization.
+- Node.js (LTS) & npm
+- Python 3.10+
+- Docker (Optional, but recommended)
+- Supabase Account (for local Dev DB)
 
-Persistence
+### 1. Clone & Setup
 
-PostgreSQL + PostGIS
+```
+git clone [https://github.com/yourusername/ushipp-occ.git](https://github.com/yourusername/ushipp-occ.git)
+cd ushipp-occ
+npm install  # Installs shared JS dependencies
 
-AWS RDS
+```
 
-Enterprise-grade managed SQL database with geospatial support.
+### 2. Database Setup
 
-Realtime
+1. Create a project on [Supabase](https://supabase.com/).
+2. Run the schema script located in `/infrastructure/database_schema.sql` in the Supabase SQL Editor.
+3. Get your **Connection String (URI)**.
 
-Redis
+### 3. Backend Setup (Python)
 
-AWS ElastiCache
+```
+cd apps/api
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env      # Add your DATABASE_URL here
+uvicorn main:app --reload
 
-Sub-millisecond latency for GPS tracking.
+```
 
-Storage
+> API will be live at http://localhost:8000. Documentation at /docs.
+> 
 
-Images
+### 4. Frontend Setup (Next.js)
 
-AWS S3
+```
+cd apps/web
+cp .env.example .env.local  # Add NEXT_PUBLIC_API_URL=http://localhost:8000
+npm run dev
 
-Durable object storage for proof-of-delivery photos.
+```
 
-2. Service Architecture & Connectivity
+> Dashboard will be live at http://localhost:3000.
+> 
 
-A. The "Frontend Layer" (Vercel)
+## 🔄 Deployment Strategy
 
-Domain: track.ushipp.com
+### Frontend (Vercel)
 
-Deployment: Connects directly to the GitHub repo (/apps/web). Pushing code triggers a Vercel build.
+Connect the repository to Vercel. Set the **Root Directory** to `apps/web`. Vercel will automatically deploy changes pushed to the `main` branch.
 
-Interaction: The Next.js app makes HTTP requests to api.ushipp.com (AWS) to fetch data. It does not talk to the database directly.
+### Backend (AWS)
 
-B. The "Backend Layer" (AWS)
+The project includes a `Dockerfile` in `apps/api`.
 
-Domain: api.ushipp.com
+1. **Build:** `docker build -t ushipp-api ./apps/api`
+2. **Deploy:** Push image to **AWS ECR**.
+3. **Run:** Update **AWS ECS Service** to pull the new image.
 
-Ingress: An AWS Application Load Balancer (ALB) sits in front of the cluster to handle SSL termination and routing.
+## 🛡 License
 
-Compute: ECS Fargate runs the Dockerized Python API. It handles the "heavy lifting" (OR-Tools optimization) that would time out on Vercel.
-
-Security: The ECS tasks run inside a private VPC. They allow traffic only from the ALB.
-
-C. The "Data Layer" (AWS)
-
-Database (RDS): Configured in a private subnet. Accepts connections only from the ECS Security Group.
-
-Cache (ElastiCache): Stores the live state of drivers. Accessible only by the Backend.
-
-3. The Deployment Pipeline (Best of Both Worlds)
-
-We separate the deployment pipelines based on the hosting provider.
-
-Pipeline A: Frontend (Automated via Vercel)
-
-Trigger: Developer pushes code to /apps/web on GitHub.
-
-Action: Vercel detects the change.
-
-Build: Vercel runs npm build and deploys to the Edge Network.
-
-Result: Updates are live in < 1 minute.
-
-Pipeline B: Backend (AWS CodePipeline)
-
-Trigger: Developer pushes code to /apps/api on GitHub.
-
-Action: AWS CodePipeline detects the change.
-
-Build: AWS CodeBuild creates the Docker container.
-
-Deploy: AWS ECS performs a rolling update of the Fargate tasks.
-
-Result: Updates are live in ~5-10 minutes (ensures zero downtime stability).
-
-4. Cost & Efficiency Analysis
-
-Efficiency: High. Vercel servers (Edge) communicate with AWS servers (Region). If both are in us-east-1 (Virginia), latency is negligible (< 10ms).
-
-Cost:
-
-Vercel: Free Tier (Generous for hobby/student projects).
-
-AWS: You pay only for the "Muscle" (Compute/DB).
-
-Savings: You save money by NOT paying for an AWS Load Balancer for the frontend (Vercel handles routing for free).
-
-This architecture provides the "Resume Value" of using AWS for infrastructure while keeping the "Developer Velocity" of Vercel for the UI.
+This project is proprietary software developed for University Shipping.
