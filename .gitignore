@@ -1,0 +1,21 @@
+# Node.js
+node_modules
+.next
+.env.local
+
+# Python
+venv
+__pycache__
+.env
+
+# General
+.DS_Store
+
+
+#Database
+.env
+
+#AI
+GEMINI.md
+architecture.md
+application_workflow.md
