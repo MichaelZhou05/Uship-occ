@@ -1,3 +1,5 @@
 {
-    "_comment": "driver /package.json"
+  "name": "driver",
+  "version": "1.0.0",
+  "private": true
 }
